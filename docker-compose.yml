@@ -1,0 +1,32 @@
+services:
+  db:
+    image: postgres:16
+    restart: always
+    env_file:
+      - '.env'
+    ports:
+      - '5432:5432'
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - '6379:6379'
+
+  storage:
+    image: minio/minio
+    ports:
+      - '9000:9000'
+      - '9001:9001'
+    env_file:
+      - '.env.docker'
+    command: server /data --console-address ":9001"
+
+  bull-board:
+    image: venatum/bull-board
+    restart: unless-stopped
+    ports:
+      - '3001:3000'
+    env_file:
+      - '.env.docker'
+    depends_on:
+      - redis
