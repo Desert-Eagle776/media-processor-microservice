@@ -6,20 +6,33 @@ services:
       - '.env'
     ports:
       - '5432:5432'
+    networks:
+      - backend
 
   redis:
     image: redis:7-alpine
+    restart: unless-stopped
     ports:
       - '6379:6379'
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    networks:
+      - backend
 
   storage:
     image: minio/minio
+    restart: unless-stopped
     ports:
       - '9000:9000'
       - '9001:9001'
     env_file:
       - '.env.docker'
     command: server /data --console-address ":9001"
+    networks:
+      - backend
 
   bull-board:
     image: venatum/bull-board
@@ -29,4 +42,10 @@ services:
     env_file:
       - '.env.docker'
     depends_on:
-      - redis
+      redis:
+        condition: service_healthy
+    networks:
+      - backend
+
+networks:
+  backend:
