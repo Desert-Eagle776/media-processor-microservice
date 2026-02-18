@@ -6,6 +6,8 @@ import { StorageModule } from './storage/storage.module';
 import { PrismaModule } from './prisma/prisma.module';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { envValidationSchema } from './config';
+import { LoggerModule } from 'nestjs-pino';
+import { ObservabilityModule } from './observability/observability.module';
 
 @Module({
   imports: [
@@ -13,6 +15,12 @@ import { envValidationSchema } from './config';
     ConfigModule.forRoot({
       isGlobal: true,
       validationSchema: envValidationSchema,
+    }),
+    LoggerModule.forRoot({
+      pinoHttp: {
+        level: process.env.LOG_LEVEL || 'info',
+        autoLogging: true,
+      },
     }),
     BullModule.forRootAsync({
       inject: [ConfigService],
@@ -26,6 +34,7 @@ import { envValidationSchema } from './config';
     PrismaModule,
     StorageModule,
     MediaModule,
+    ObservabilityModule,
   ],
   controllers: [],
   providers: [],

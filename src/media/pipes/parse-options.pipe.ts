@@ -11,15 +11,17 @@ export class ParseOptionsPipe implements PipeTransform<
   TransformJson
 > {
   transform(value: OptionsFormValue): TransformJson {
-    console.log(`Parse Options Pipe: ${value}`);
     if (!value) return undefined;
 
     let parsed: unknown;
-    try {
-      parsed = JSON.parse(value);
-      console.log(`Parsed: ${parsed}`);
-    } catch {
-      throw new BadRequestException('Invalid JSON in "options"');
+    if (typeof value === 'string') {
+      try {
+        parsed = JSON.parse(value);
+      } catch {
+        throw new BadRequestException('Invalid JSON in "options"');
+      }
+    } else {
+      parsed = value;
     }
 
     if (

@@ -19,11 +19,19 @@ import {
   ApiOperation,
   ApiParam,
   ApiResponse,
+  ApiTags,
+  ApiCreatedResponse,
+  ApiOkResponse,
+  ApiExtraModels,
 } from '@nestjs/swagger';
 import { ALLOWED_IMAGE_MIME_TYPES, MAX_IMAGE_FILE_SIZE } from '../common';
 import { ParseOptionsPipe } from './pipes/parse-options.pipe';
 import { Prisma } from '@prisma/client';
+import { UploadMediaDto } from './dto/upload-media.dto';
+import { UploadOptionsDto } from './dto/upload-options.dto';
 
+@ApiExtraModels(UploadMediaDto, UploadOptionsDto)
+@ApiTags('media')
 @Controller('media')
 export class MediaController {
   constructor(private readonly mediaService: MediaService) {}
@@ -31,20 +39,14 @@ export class MediaController {
   @Post('upload')
   @ApiOperation({ summary: 'Upload an image for processing' })
   @ApiConsumes('multipart/form-data')
-  @ApiBody({
+  @ApiBody({ type: UploadMediaDto })
+  @ApiCreatedResponse({
+    description: 'File uploaded and queued successfully',
     schema: {
-      type: 'object',
-      required: ['file'],
-      properties: {
-        file: {
-          type: 'string',
-          format: 'binary',
-        },
-        options: {
-          type: 'string',
-          description:
-            'JSON string with processing options. Example: {"format":"webp","optimized":{"width":1280,"quality":80},"thumbnail":{"width":320,"quality":70}}',
-        },
+      example: {
+        success: true,
+        message: 'File uploaded and queued for processing',
+        data: { mediaId: 'uuid' },
       },
     },
   })
@@ -79,6 +81,24 @@ export class MediaController {
   @ApiParam({
     name: 'id',
     description: 'Media ID returned from the upload enpdoint',
+  })
+  @ApiOkResponse({
+    description: 'Media status returned successfully',
+    schema: {
+      example: {
+        success: true,
+        message: 'File processing completed successfully',
+        data: {
+          id: 'uuid',
+          status: 'COMPLETED',
+          originalName: 'image.jpg',
+          outputs: {
+            optimized: 'signed-download-url',
+            thumbnail: 'signed-download-url',
+          },
+        },
+      },
+    },
   })
   @ApiResponse({
     status: HttpStatus.OK,

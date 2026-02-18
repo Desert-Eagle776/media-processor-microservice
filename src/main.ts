@@ -1,10 +1,14 @@
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
+import { Logger } from 'nestjs-pino';
 
 async function bootstrap() {
   const PORT = process.env.PORT || 3000;
-  const app = await NestFactory.create(AppModule);
+  const app = await NestFactory.create(AppModule, {
+    bufferLogs: true,
+  });
+  app.useLogger(app.get(Logger));
 
   const config = new DocumentBuilder()
     .setTitle('Media Processor API')

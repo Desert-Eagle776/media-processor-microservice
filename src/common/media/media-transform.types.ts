@@ -1,6 +1,6 @@
 import { Prisma } from '@prisma/client';
 
-export type OptionsFormValue = string | undefined;
+export type OptionsFormValue = string | Record<string, unknown> | undefined;
 export type TransformJson = Prisma.InputJsonValue | undefined;
 
 export type TransformOutputOptions = {
