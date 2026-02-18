@@ -1,4 +1,5 @@
 import {
+  Body,
   Controller,
   FileTypeValidator,
   Get,
@@ -20,13 +21,15 @@ import {
   ApiResponse,
 } from '@nestjs/swagger';
 import { ALLOWED_IMAGE_MIME_TYPES, MAX_IMAGE_FILE_SIZE } from '../common';
+import { ParseOptionsPipe } from './pipes/parse-options.pipe';
+import { Prisma } from '@prisma/client';
 
 @Controller('media')
 export class MediaController {
   constructor(private readonly mediaService: MediaService) {}
 
   @Post('upload')
-  @ApiOperation({ summary: 'Uploade an image for processing' })
+  @ApiOperation({ summary: 'Upload an image for processing' })
   @ApiConsumes('multipart/form-data')
   @ApiBody({
     schema: {
@@ -36,6 +39,11 @@ export class MediaController {
         file: {
           type: 'string',
           format: 'binary',
+        },
+        options: {
+          type: 'string',
+          description:
+            'JSON string with processing options. Example: {"format":"webp","optimized":{"width":1280,"quality":80},"thumbnail":{"width":320,"quality":70}}',
         },
       },
     },
@@ -61,8 +69,9 @@ export class MediaController {
       }),
     )
     file: Express.Multer.File,
+    @Body('options', ParseOptionsPipe) transform?: Prisma.InputJsonValue,
   ) {
-    return this.mediaService.processUpload(file);
+    return this.mediaService.processUpload(file, transform);
   }
 
   @Get(':id')

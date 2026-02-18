@@ -6,7 +6,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { StorageService } from '../storage/storage.service';
 import { randomUUID } from 'crypto';
-import { MediaStatus } from '@prisma/client';
+import { MediaStatus, Prisma } from '@prisma/client';
 
 @Injectable()
 export class MediaService {
@@ -16,11 +16,13 @@ export class MediaService {
     private readonly storage: StorageService,
   ) {}
 
-  async processUpload(file: Express.Multer.File) {
+  async processUpload(
+    file: Express.Multer.File,
+    transform?: Prisma.InputJsonValue,
+  ) {
     const s3Client = this.storage.getClient();
     const bucket = this.storage.getBucket();
 
-    const fileName = `${Date.now()}-${file.originalname}`;
     const originalKey = `original/${randomUUID()}`;
 
     await s3Client.send(
@@ -35,12 +37,13 @@ export class MediaService {
     const media = await this.prisma.media.create({
       data: {
         originalName: file.originalname,
-        filename: fileName,
         mimetype: file.mimetype,
         size: file.size,
         status: MediaStatus.PENDING,
         originalKey,
         optimizedKey: null,
+        thumbnailKey: null,
+        transform,
       },
     });
 
@@ -54,7 +57,7 @@ export class MediaService {
         attempts: 3,
         backoff: { type: 'exponential', delay: 2000 },
         removeOnComplete: { age: 3600 },
-        removeOnFail: false,
+        removeOnFail: { age: 86400 }, // 24h
       },
     );
 
@@ -66,8 +69,6 @@ export class MediaService {
   }
 
   async getMediaStatus(id: string) {
-    let url: string | null = null;
-
     const s3Client = this.storage.getClient();
     const bucket = this.storage.getBucket();
 
@@ -79,22 +80,38 @@ export class MediaService {
       throw new NotFoundException('File not found');
     }
 
+    const outputs: { optimized?: string; thumbnail?: string } = {};
+
     if (media?.status === MediaStatus.COMPLETED && media.optimizedKey) {
-      const command = new GetObjectCommand({
-        Bucket: bucket,
-        Key: media.optimizedKey,
-      });
-      url = await getSignedUrl(s3Client, command, { expiresIn: 900 });
+      outputs.optimized = await getSignedUrl(
+        s3Client,
+        new GetObjectCommand({
+          Bucket: bucket,
+          Key: media.optimizedKey,
+        }),
+        { expiresIn: 900 },
+      );
+    }
+
+    if (media.status === MediaStatus.COMPLETED && media.thumbnailKey) {
+      outputs.thumbnail = await getSignedUrl(
+        s3Client,
+        new GetObjectCommand({
+          Bucket: bucket,
+          Key: media.thumbnailKey,
+        }),
+        { expiresIn: 900 },
+      );
     }
 
     return {
       success: true,
-      message: this.getStatusMessage(media.status as MediaStatus),
+      message: this.getStatusMessage(media.status),
       data: {
-        id: media?.id,
-        status: media?.status,
-        originalName: media?.originalName,
-        url,
+        id: media.id,
+        status: media.status,
+        originalName: media.originalName,
+        outputs,
       },
     };
   }

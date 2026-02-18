@@ -36,8 +36,8 @@ export class StorageService implements OnModuleInit {
       await this.s3.send(new HeadBucketCommand({ Bucket: bucket }));
 
       this.logger.log(`S3 bucket exists: ${bucket}`);
-    } catch (e) {
-      const code = e?.name || e?.Code || e?.$metadata?.httpStatusCode;
+    } catch (error: unknown) {
+      const code = this.getErrorCode(error);
 
       this.logger.warn(
         `Bucket "${bucket}" not found (code=${code}). Creating...`,
@@ -46,9 +46,9 @@ export class StorageService implements OnModuleInit {
       try {
         await this.s3.send(new CreateBucketCommand({ Bucket: bucket }));
         this.logger.log(`S3 bucket created: ${bucket}`);
-      } catch (createErr) {
-        const name = createErr?.name;
-        const status = createErr?.$metadata?.httpStatusCode;
+      } catch (createError: unknown) {
+        const name = this.getErrorName(createError);
+        const status = this.getErrorStatus(createError);
 
         if (
           name === StorageBucketErrors.BucketAlreadyOwnedByYou ||
@@ -61,10 +61,40 @@ export class StorageService implements OnModuleInit {
           return;
         }
 
-        this.logger.error(`Failed to create bucket: ${bucket}`, createErr);
-        throw createErr;
+        this.logger.error(`Failed to create bucket: ${bucket}`, createError);
+        throw createError;
       }
     }
+  }
+
+  private getErrorCode(error: unknown): string | number | undefined {
+    const e = this.asObject(error);
+    const status = this.getErrorStatus(error);
+    return this.readString(e, 'name') ?? this.readString(e, 'Code') ?? status;
+  }
+
+  private getErrorName(error: unknown): string | undefined {
+    return this.readString(this.asObject(error), 'name');
+  }
+
+  private getErrorStatus(error: unknown): number | undefined {
+    const e = this.asObject(error);
+    const metadata = this.asObject(e.$metadata);
+    const status = metadata.httpStatusCode;
+    return typeof status === 'number' ? status : undefined;
+  }
+
+  private asObject(value: unknown): Record<string, unknown> {
+    if (!value || typeof value !== 'object') return {};
+    return value as Record<string, unknown>;
+  }
+
+  private readString(
+    obj: Record<string, unknown>,
+    key: string,
+  ): string | undefined {
+    const value = obj[key];
+    return typeof value === 'string' ? value : undefined;
   }
 
   getClient(): S3Client {

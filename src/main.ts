@@ -18,10 +18,9 @@ async function bootstrap() {
   const document = SwaggerModule.createDocument(app, config);
   SwaggerModule.setup('api', app, document);
 
-  await app.listen(PORT, async () =>
-    console.log(
-      `Server successfully started! Listening on ${await app.getUrl()}`,
-    ),
+  await app.listen(PORT);
+  console.log(
+    `Server successfully started! Listening on ${await app.getUrl()}`,
   );
 }
-bootstrap();
+void bootstrap();

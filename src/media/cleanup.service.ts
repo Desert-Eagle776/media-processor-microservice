@@ -46,7 +46,13 @@ export class CleanupService {
           },
         ],
       },
-      select: { id: true, originalKey: true, optimizedKey: true, status: true },
+      select: {
+        id: true,
+        originalKey: true,
+        optimizedKey: true,
+        thumbnailKey: true,
+        status: true,
+      },
       take: MAX_DELETE_BATCH,
     });
 
@@ -67,15 +73,23 @@ export class CleanupService {
           );
         }
 
+        if (media.thumbnailKey) {
+          await s3Client.send(
+            new DeleteObjectCommand({
+              Bucket: bucket,
+              Key: media.thumbnailKey,
+            }),
+          );
+        }
+
         await this.prisma.media.deleteMany({ where: { id: media.id } });
 
         deleted++;
         this.logger.log(`Deleted media: ${media.id} (${media.status})`);
-      } catch (e: any) {
+      } catch (e: unknown) {
         failed++;
-        this.logger.error(
-          `Failed to delete media ${media.id}: ${e?.message ?? e}`,
-        );
+        const message = e instanceof Error ? e.message : String(e);
+        this.logger.error(`Failed to delete media ${media.id}: ${message}`);
       }
     }
 

@@ -8,6 +8,7 @@ import { StorageService } from '../storage/storage.service';
 import { randomUUID } from 'crypto';
 import { Logger } from '@nestjs/common';
 import { MediaStatus } from '@prisma/client';
+import { MediaTransformOptions } from '../common';
 
 @Processor('media_queue')
 export class MediaProcessor extends WorkerHost {
@@ -20,7 +21,7 @@ export class MediaProcessor extends WorkerHost {
     super();
   }
 
-  async process(job: Job<{ mediaId: string }>): Promise<any> {
+  async process(job: Job<{ mediaId: string }>): Promise<void> {
     const { mediaId } = job.data;
 
     const s3Client = this.storage.getClient();
@@ -29,9 +30,18 @@ export class MediaProcessor extends WorkerHost {
     const media = await this.prisma.media.findUnique({
       where: { id: mediaId },
     });
-    if (media?.status === MediaStatus.COMPLETED && media.optimizedKey) {
+
+    if (!media) {
+      this.logger.warn(`Media not found: ${mediaId}`);
       return;
     }
+
+    if (
+      media.status === MediaStatus.COMPLETED &&
+      media.optimizedKey &&
+      media.thumbnailKey
+    )
+      return;
 
     await this.prisma.media.update({
       where: { id: mediaId },
@@ -40,21 +50,42 @@ export class MediaProcessor extends WorkerHost {
 
     try {
       const resp = await s3Client.send(
-        new GetObjectCommand({ Bucket: bucket, Key: media?.originalKey }),
+        new GetObjectCommand({ Bucket: bucket, Key: media.originalKey }),
       );
 
-      const stream = resp.Body as Readable;
+      const stream = this.toReadable(resp.Body);
       const chunks: Buffer[] = [];
-
-      for await (const chunk of stream) chunks.push(chunk);
+      for await (const chunk of stream as AsyncIterable<
+        Buffer | Uint8Array | string
+      >) {
+        chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+      }
       const buffer = Buffer.concat(chunks);
 
-      const optimizedBuffer = await sharp(buffer)
-        .resize({ width: 800, withoutEnlargement: true })
-        .webp({ quality: 80 })
-        .toBuffer();
+      const transform = this.parseTransform(media.transform);
+      const optimizedOpts = transform.optimized ?? { width: 1280, quality: 80 };
+      const thumbOpts = transform.thumbnail ?? { width: 320, quality: 70 };
 
       const optimizedKey = `optimized/${randomUUID()}.webp`;
+      const thumbnailKey = `thumbnails/${randomUUID()}.webp`;
+
+      const optimizedBuffer = await sharp(buffer)
+        .resize({
+          width: optimizedOpts.width,
+          height: optimizedOpts.height,
+          withoutEnlargement: true,
+        })
+        .webp({ quality: optimizedOpts.quality ?? 80 })
+        .toBuffer();
+
+      const thumbnailBuffer = await sharp(buffer)
+        .resize({
+          width: thumbOpts.width,
+          height: thumbOpts.height,
+          withoutEnlargement: true,
+        })
+        .webp({ quality: thumbOpts.quality ?? 70 })
+        .toBuffer();
 
       await s3Client.send(
         new PutObjectCommand({
@@ -65,9 +96,18 @@ export class MediaProcessor extends WorkerHost {
         }),
       );
 
+      await s3Client.send(
+        new PutObjectCommand({
+          Bucket: bucket,
+          Key: thumbnailKey,
+          Body: thumbnailBuffer,
+          ContentType: 'image/webp',
+        }),
+      );
+
       await this.prisma.media.update({
         where: { id: mediaId },
-        data: { optimizedKey, status: MediaStatus.COMPLETED },
+        data: { optimizedKey, thumbnailKey, status: MediaStatus.COMPLETED },
       });
     } catch (e) {
       this.logger.error(`Job ${job.id} failed:`, e);
@@ -79,5 +119,20 @@ export class MediaProcessor extends WorkerHost {
 
       throw e;
     }
+  }
+
+  private toReadable(body: unknown): Readable {
+    if (!(body instanceof Readable)) {
+      throw new Error('S3 object body is not a readable stream');
+    }
+    return body;
+  }
+
+  private parseTransform(value: unknown): MediaTransformOptions {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) {
+      return {};
+    }
+
+    return value as MediaTransformOptions;
   }
 }

@@ -117,7 +117,10 @@ src/
     "id": "uuid",
     "status": "COMPLETED",
     "originalName": "image.jpg",
-    "url": "signed-download-url"
+    "outputs": {
+      "optimized": "signed-download-url",
+      "thumbnail": "signed-download-url"
+    }
   }
 }
 ```
