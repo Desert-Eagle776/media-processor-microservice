@@ -36,6 +36,11 @@ export class MediaProcessor extends WorkerHost {
       return;
     }
 
+    if (media.status === MediaStatus.PROCESSING) {
+      this.logger.warn(`Media already processing: ${mediaId}`);
+      return;
+    }
+
     if (
       media.status === MediaStatus.COMPLETED &&
       media.optimizedKey &&
